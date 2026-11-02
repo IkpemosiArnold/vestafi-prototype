@@ -9,6 +9,7 @@
 <meta name="theme-color" content="#0E1411" media="(prefers-color-scheme: dark)">
 <meta property="og:title" content="Application Desk, a prototype for Vestafi">
 <meta property="og:description" content="Every application read in a minute. A person still decides.">
+<link rel="icon" href="data:,">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Literata:ital,opsz,wght@0,7..72,400;0,7..72,600;1,7..72,400&family=Schibsted+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -223,7 +224,7 @@ var ABROAD = /Toronto|Canada|Dubai|UAE|London|UK|Helsinki|Geneva|Brussels|Boston
 
 var RULES = [
  {type:"city", tag:"place", re:new RegExp("\\b("+CITIES.join("|")+")\\b","g")},
- {type:"money", tag:"money", re:/(?:USD|US\$|\$|UGX|Shs\.?)\s?\d[\d,]*(?:\.\d+)?(?:\s?(?:k|K|m|million)\b)?(?:\s(?:a|per)\s(?:month|year))?|\d[\d,]*(?:\.\d+)?\s?(?:million|m)\s?(?:UGX|shillings|shs)(?:\s(?:a|per)\s(?:month|year))?/g},
+ {type:"money", tag:"money", re:/(?:USD|US\$|\$|UGX|Shs\.?)\s?\d(?:[\d,]*\d)?(?:\.\d+)?(?:\s?(?:k|K|m|million)\b)?(?:\s(?:a|per)\s(?:month|year))?|\d(?:[\d,]*\d)?(?:\.\d+)?\s?(?:million|m)\s?(?:UGX|shillings|shs)(?:\s(?:a|per)\s(?:month|year))?|\b\d+(?:\.\d+)?\s?[kK]\b/g},
  {type:"prime", tag:"way in", re:/\b(whole (?:2|two|3|three|1|one)?\s?(?:bed(?:room)?|apartment|unit)|outright|entire apartment|own it fully)\b/gi},
  {type:"live", tag:"way in", re:/\b(pays? me rent now|rent now|income now|right away|already tenanted|from next month)\b/gi},
  {type:"small", tag:"way in", re:/\b(start small|smaller amount|small amount|start with maybe|start with)\b/gi},
@@ -298,7 +299,7 @@ function read(text, extra){
   if(has.tax) hand.push("mentions tax or legal");
   if(budget && budget >= 40000) hand.push("large ticket");
   if(has.trust && /pyramid|ponzi|scam/i.test(text)) hand.push("asked if it is a scheme");
-  if(conf === "Low" && !has.later) hand.push("too little to go on");
+  if(conf === "Low" && !has.later && !hand.length) hand.push("too little to go on");
 
   return {hits:kept, has:has, budget:budget, place:place, abroad:abroad, way:way, wayWhy:wayWhy, worries:worries, ready:ready, readyWhy:readyWhy, conf:conf, signals:signals, hand:hand};
 }
@@ -309,7 +310,7 @@ var TERMS = {
   trust:{t:"You don't have to take our word for it. Come to a Thursday call and meet members before you commit a shilling, and walk the apartment with them.", s:"vestafi.co, Becoming a member"},
   source:{t:"The rent comes from tenants living in real apartments. Each collection is recorded, and every member sees their own share of it in their member account.", s:"vestafi.co, Owned, not promised"},
   title:{t:"Yes. Every apartment unit has its own certificate of title and its own owners, and rent from one unit never crosses to another.", s:"vestafi.co, How to get in"},
-  exit:{t:"When a member wants out of a unit, they sell to fellow members in an exit window, at a price agreed between members.", s:"vestafi.co/how-it-works; letter, May 2026"},
+  exit:{t:"When a member wants out of a unit, they sell to fellow members in an exit window, at prices the market sets.", s:"vestafi.co/how-it-works; letter, May 2026"},
   returns:{t:"I'd rather show you the numbers for a specific apartment on a call, with the documents, than put a figure in a message.", s:"Guard"},
   tax:{t:"Tax for your situation deserves a proper answer from a person, so Hakiza will follow up directly.", s:"Handoff"},
   abroad:{t:"Members abroad own in Kampala while Vestafi handles tenants, maintenance and rent collection.", s:"vestafi.co/members-abroad"},
@@ -330,9 +331,10 @@ function draft(app, r){
   if(r.way==="Vestafi Fractional" && r.has.small) use("small");
   r.worries.forEach(function(w){ if(lines.length < 4) use(w[0]); });
   if(lines.length < 3 && r.abroad && (!r.place || !/Kampala|Ntinda|Kira|Najjera|Najeera|Naalya|Mukono|Entebbe|Wakiso|Muyenga|Kololo|Bukoto/.test(r.place))) use("abroad");
+  var saidCall = lines.indexOf(TERMS.trust.t) >= 0;
   var close = r.ready === "Early"
-    ? "No rush at all. The Thursday call is open whenever you want a look inside."
-    : "The next step is a Thursday call, where you meet members before any money moves. Shall I save you a seat this week?";
+    ? (saidCall ? "No rush at all. Reply here whenever you'd like a seat." : "No rush at all. The Thursday call is open whenever you want a look inside.")
+    : (saidCall ? "Shall I save you a seat on this Thursday's call?" : "The next step is a Thursday call, where you meet members before any money moves. Shall I save you a seat this week?");
   var text = [hello].concat(lines).concat([close, "Vestafi team"]).join("\n\n");
   // guard: block return figures, guarantees and anything not on file
   var blocked = [];
@@ -421,7 +423,8 @@ function runRead(){
 
   var d = draft(a, r);
   $("draft").textContent = d.text;
-  $("src").innerHTML = d.srcs.length ? "Drawn from: " + d.srcs.filter(function(s){return s!=="Guard"&&s!=="Handoff";}).map(function(s){return "<span>"+esc(s)+"</span>";}).join("") : "";
+  var pages = d.srcs.filter(function(s){return s!=="Guard"&&s!=="Handoff";});
+  $("src").innerHTML = pages.length ? "Drawn from: " + pages.map(function(s){return "<span>"+esc(s)+"</span>";}).join("") : "";
   var notes = "";
   if(d.askedReturns || d.blocked.length) notes += '<div class="note guard"><b>Guard held back a return figure.</b> Numbers go out with documents, from a person.</div>';
   else notes += '<div class="note guard">Guard checked: no return figures, nothing outside Vestafi\'s own pages.</div>';
